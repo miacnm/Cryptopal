@@ -1,0 +1,13 @@
+{
+  "name": "cryptopal",
+  "private": true,
+  "type": "module",
+  "description": "Pay with crypto in a tap. AI picks the smartest way to pay and guards every send. PayPal sandbox + Cloudflare Workers AI.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.157.0"
+  }
+}

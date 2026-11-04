@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CryptoPal Review Desk</title>
+<meta name="description" content="Where a person at CryptoPal checks panic locks and ID + selfie requests.">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .desk { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .tk { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin: 12px 0; }
+  .tk.panic { border-color: var(--bad); }
+  .tk h3 { margin: 0 0 4px; font-size: 17px; }
+  .pics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+  .pics img { width: 100%; border-radius: 10px; background: var(--soft); }
+  .pics small { color: var(--muted); }
+  .acts2 { display: flex; gap: 8px; }
+  .acts2 button { flex: 1; }
+  .done { color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="top"><div class="logo"><span>C</span>Review Desk</div><p>A person at CryptoPal checks every panic lock and every ID + selfie request. Nothing unlocks without a human.</p></header>
+<main class="desk" id="desk">Loading…</main>
+<script type="module">
+const W = new URLSearchParams(location.search).get('w');
+const desk = document.getElementById('desk');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const face = (d, label) => d == null ? `${label}: not checked` : `${label}: ${d <= 0.55 ? 'match' : 'NO match'} (distance ${d})`;
+async function load() {
+  if (!/^[a-z0-9-]{8,40}$/.test(W || '')) { desk.textContent = 'Open this from the demo panel.'; return; }
+  const r = await fetch(`/api/w/${W}/reviews`, { cache: 'no-store' }).then(r => r.json());
+  const title = { panic: 'Panic phrase used', unlock: 'Unlock request', change: 'Security change request' };
+  desk.innerHTML = `<p>Account status: <b class="${r.locked ? 'bad' : ''}">${r.locked ? (r.locked.kind === 'panic' ? 'Locked by panic phrase' : 'Frozen by AI watchdog: ' + esc(r.locked.reason)) : 'Normal'}</b></p>` +
+    (r.reviews.length ? r.reviews.map(t => `<div class="tk ${t.kind}"><h3>${title[t.kind] || t.kind}</h3>
+      <p class="muted">${new Date(t.t).toLocaleString()} · ${t.status}</p><p>${esc(t.note)}</p>
+      ${t.change ? `<p>Wants: ${esc(t.change.what)}</p>` : ''}
+      ${t.kind !== 'panic' ? `<div class="pics"><div><img src="/api/w/${W}/img?k=img:${t.id}:id" alt="Photo ID"><small>Photo ID · ${face(t.idVsOwner, 'vs owner')}</small></div>
+        <div><img src="/api/w/${W}/img?k=img:${t.id}:selfie" alt="Live selfie"><small>Live selfie · ${face(t.selfieVsOwner, 'vs owner')}</small></div></div>
+        <p class="muted">${face(t.idVsSelfie, 'ID vs selfie')}</p>` : '<p class="muted">The owner\'s phone shows "Processing", so a thief sees nothing unusual. Wait for the owner to call in.</p>'}
+      ${t.status === 'open' && t.kind !== 'panic' ? `<div class="acts2"><button data-id="${t.id}" data-ok="1">Approve</button><button class="ghost" data-id="${t.id}" data-ok="">Reject</button></div>` : ''}</div>`).join('')
+      : '<p class="muted">Nothing to review.</p>');
+}
+desk.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  const r = await fetch(`/api/w/${W}/decide`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: b.dataset.id, approve: !!b.dataset.ok }) });
+  if (!r.ok) alert((await r.json()).error);
+  load();
+});
+load(); setInterval(load, 4000);
+</script>
+</body>
+</html>

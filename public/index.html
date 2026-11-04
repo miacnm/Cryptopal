@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CryptoPal</title>
+<meta name="description" content="Pay with crypto in a tap. AI picks the smartest way to pay and guards every send.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230a58f5'/%3E%3Ctext x='32' y='45' font-size='36' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3EC%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo"><span>C</span>CryptoPal</div>
+  <p>Pay with crypto in a tap. AI picks the smartest way to pay and guards every send.</p>
+</header>
+<main class="stage">
+  <section class="dev">
+    <div class="phone"><button class="side" id="side" aria-label="Side button. Double-click to pay."></button><div class="screen" id="scrMe"></div></div>
+    <p class="cap">Your phone · double-click the side button</p>
+  </section>
+  <section class="dev">
+    <div class="phone other"><div class="screen" id="scrOther"></div></div>
+    <p class="cap"><label>Next to you: <select id="who"><option value="cafe">Corner Café register</option><option value="ana">Ana's phone</option></select></label></p>
+  </section>
+  <aside class="demo" id="demo"></aside>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
