@@ -30,6 +30,29 @@ let S = null, CFG = { paypal: false }, CUR = {};
 const U = { screen: 'home', setup: { step: 1 }, sheet: null, trade: null, msg: null, listening: false, speech: 'normal' };
 const O = { screen: 'idle', reqId: null, msg: null }; // the other phone
 const scrMe = $('#scrMe'), scrOther = $('#scrOther'), demo = $('#demo'), who = $('#who');
+// Phone or installed app: show one screen at a time, with a switcher at the top.
+const SOLO = matchMedia('(max-width: 720px)').matches || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function setRole(r) {
+  if (!['me', 'cafe', 'ana', 'demo'].includes(r)) r = 'me';
+  document.body.dataset.role = r;
+  try { localStorage.setItem('cp_role', r); } catch {}
+  document.querySelectorAll('#roles button').forEach(b => b.classList.toggle('on', b.dataset.role === r));
+  if (r === 'cafe' || r === 'ana') { who.value = r; renderOther(); }
+}
+if (SOLO) {
+  document.body.classList.add('solo');
+  let saved = null; try { saved = localStorage.getItem('cp_role'); } catch {}
+  setTimeout(() => setRole(params.get('role') || saved || 'me'));
+  $('#roles').addEventListener('click', e => { const b = e.target.closest('[data-role]'); if (b) setRole(b.dataset.role); });
+  let taps = [];
+  document.addEventListener('click', e => { // 3 quick taps on the top edge bring the switcher back
+    if (e.clientY > 40 || !document.body.classList.contains('hide-roles')) return;
+    taps = taps.filter(t => Date.now() - t < 900).concat(Date.now());
+    if (taps.length >= 3) { document.body.classList.remove('hide-roles'); taps = []; }
+  });
+}
+$('#manifest').href = '/manifest.webmanifest?w=' + W;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 const myName = () => (S?.me.name && S.me.name !== 'You' ? S.me.name : 'you');
 
 // ---------- voice ----------
@@ -128,7 +151,7 @@ function lockView() {
     <div class="clock">${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/, '')}</div>
     <div class="date">${d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${S.night ? ' · night' : ''}</div>
     <button class="appicon" data-a="wallet"><span>C</span>CryptoPal</button>
-    <p class="hint">Double-click the side button to pay</p>
+    <p class="hint">${SOLO ? 'Double-tap anywhere to pay' : 'Double-click the side button to pay'}</p>
     ${micBlock()}${msg()}
   </div>`;
 }
@@ -268,7 +291,7 @@ function chooseView(sh) {
   const other = g.options.filter(o => o.id !== g.pick);
   return `<div class="choose"><p class="amount">${money(g.usd)} <small>to ${esc(g.toName)}</small></p>
     <label class="opt ai ${chosen === pick.id ? 'sel' : ''}"><input type="radio" name="opt" value="${pick.id}" ${chosen === pick.id ? 'checked' : ''}>
-      <span class="badge">AI pick</span><b>${esc(pick.label)}</b><small>${esc(pick.detail)}</small><em>${esc(g.reason)}</em>
+      <span class="badge">✨ AI pick</span><b>${esc(pick.label)}</b><small>${esc(pick.detail)}</small><em>${esc(g.reason)}</em>
       <button type="button" class="q" data-a="why" aria-label="Why">?</button></label>
     ${sh.why ? `<div class="whybox"><b>Why the AI picked this</b><ul>${(g.why || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
     ${other.map(o => `<label class="opt ${chosen === o.id ? 'sel' : ''}"><input type="radio" name="opt" value="${o.id}" ${chosen === o.id ? 'checked' : ''}><b>${esc(o.label)}</b><small>${esc(o.detail)}${o.change24 != null ? ' · today ' + pct(o.change24) : ''}</small></label>`).join('')}
@@ -429,6 +452,9 @@ async function addCash() {
 }
 actions.ppclose = () => { U.ppOpen = false; renderMe(); };
 
+scrMe.addEventListener('dblclick', e => {
+  if (U.screen === 'home' && !U.sheet && S?.me.enrolled && !e.target.closest('button, input, form')) { U.screen = 'wallet'; openSheet('pay'); }
+});
 scrMe.addEventListener('click', e => {
   const a = e.target.closest('[data-a]');
   if (a && actions[a.dataset.a]) { e.preventDefault(); actions[a.dataset.a](a); }
@@ -527,6 +553,7 @@ function renderDemo() {
     <label class="tog"><input type="checkbox" data-d="simulate" ${S.simulate ? 'checked' : ''}> No camera or mic (type the phrase)</label>
     ${S.simulate ? `<label>Typed phrase sounds<select data-d="speech"><option value="normal" ${U.speech === 'normal' ? 'selected' : ''}>like me</option><option value="slurred" ${U.speech === 'slurred' ? 'selected' : ''}>slurred (drunk or drugged)</option></select></label>` : ''}
     <button data-d="skip">Skip ahead 24 hours</button>
+    ${SOLO ? '<button class="ghost" data-d="clean">Hide the top menu for recording</button><p class="muted">Tap the very top of the screen 3 times to get it back.</p>' : ''}
     <a class="btn" href="/review?w=${W}" target="_blank" rel="noopener">Human review desk</a>
     <h4>Behind the scenes</h4>
     <p>Account: <b class="${b.locked ? 'bad' : ''}">${b.locked === 'panic' ? 'LOCKED by panic phrase (the phone doesn\'t show it)' : b.locked === 'freeze' ? 'Frozen by AI watchdog' : 'Normal'}</b></p>
@@ -544,6 +571,7 @@ demo.addEventListener('change', async e => {
 });
 demo.addEventListener('click', async e => {
   const k = e.target.dataset?.d;
+  if (k === 'clean') { document.body.classList.add('hide-roles'); setRole('me'); return; }
   if (k === 'skip') { await api('demo', { skipHours: 24 }); await refresh(true); renderMe(); }
   if (k === 'reset' && confirm('Start the demo over?')) { await api('demo', { reset: true }); Object.assign(U, { screen: 'home', setup: { step: 1 }, sheet: null, msg: null }); O.reqId = null; camOff(); await refresh(true); renderMe(); renderOther(); }
 });

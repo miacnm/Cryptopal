@@ -5,20 +5,33 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CryptoPal</title>
 <meta name="description" content="Pay with crypto in a tap. AI picks the smartest way to pay and guards every send.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230a58f5'/%3E%3Ctext x='32' y='45' font-size='36' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3EC%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#07070c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CryptoPal">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="manifest" id="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<nav class="roles" id="roles" aria-label="Which screen">
+  <button data-role="me">📱 Me</button><button data-role="cafe">☕ Register</button><button data-role="ana">👋 Ana</button><button data-role="demo">⚙️</button>
+</nav>
 <header class="top">
-  <div class="logo"><span>C</span>CryptoPal</div>
+  <div class="logo"><span>c</span>CryptoPal</div>
   <p>Pay with crypto in a tap. AI picks the smartest way to pay and guards every send.</p>
+  <span class="sticker">✨ AI + PayPal</span>
 </header>
 <main class="stage">
-  <section class="dev">
+  <section class="dev me">
     <div class="phone"><button class="side" id="side" aria-label="Side button. Double-click to pay."></button><div class="screen" id="scrMe"></div></div>
     <p class="cap">Your phone · double-click the side button</p>
   </section>
-  <section class="dev">
+  <section class="dev them">
     <div class="phone other"><div class="screen" id="scrOther"></div></div>
     <p class="cap"><label>Next to you: <select id="who"><option value="cafe">Corner Café register</option><option value="ana">Ana's phone</option></select></label></p>
   </section>

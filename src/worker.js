@@ -24,6 +24,14 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === '/api/config') return json({ paypalClientId: env.PAYPAL_CLIENT_ID || '', paypal: payPalReady(env) });
     if (url.pathname === '/api/currencies') return json(await currencies());
+    if (url.pathname === '/manifest.webmanifest') { // start_url keeps the demo session when installed
+      const w = /^[a-z0-9-]{8,40}$/.test(url.searchParams.get('w') || '') ? url.searchParams.get('w') : '';
+      return new Response(JSON.stringify({
+        name: 'CryptoPal', short_name: 'CryptoPal', description: 'Pay with crypto in a tap. AI picks the smartest way to pay.',
+        start_url: '/' + (w ? '?w=' + w : ''), scope: '/', display: 'standalone', background_color: '#07070c', theme_color: '#07070c',
+        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }]
+      }), { headers: { 'content-type': 'application/manifest+json', 'cache-control': 'no-store' } });
+    }
     const m = url.pathname.match(/^\/api\/w\/([a-z0-9-]{8,40})\/([a-z/]+)$/);
     if (m) return env.WORLD.get(env.WORLD.idFromName(m[1])).fetch(new Request('https://w/' + m[2] + url.search, req));
     if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
@@ -428,6 +436,8 @@ export class World extends DurableObject {
       reason = down ? `${down.asset} is down today, so borrow instead of selling low.` : 'Simplest way to pay with no surprises.';
       why = [pick.detail];
     }
+    const nice = t => String(t).replace(/\b(cash|(?:sell|borrow|give):[A-Z0-9]+)\b/g, id => list.find(o => o.id === id)?.label.toLowerCase() || id);
+    reason = nice(reason || ''); why = (why || []).map(nice);
     return { usd, to: b.to, toName: to.name, pick: pick.id, reason: String(reason || '').slice(0, 140), why, options: list };
   }
 
