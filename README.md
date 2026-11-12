@@ -83,6 +83,18 @@ iPhone app (optional): install [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 - `public/face.js`: the on-device face check. `public/face-api/`: face-api.js and its models (MIT).
 - `public/review.html`: the human review desk. `public/sw.js`: offline cache for the app shell and face models.
 - `ios/`: the native iPhone app (SwiftUI + WKWebView, Face ID through LocalAuthentication).
+- `voice-filter/`: on-device voice models (Viper1, Viper2, V5); see above.
+
+## Voice filter (next step for the voice check)
+
+`voice-filter/` holds my own on-device voice models (PyTorch training code plus exported ONNX models), built for the Nayerly translator. They are the plan for making CryptoPal's voice check work in a noisy store:
+
+- **Viper2** (`viper2_model.py`, `viper2_trainer.py`, `viper2.onnx`): hears up to 3 voices in a clip and makes a 192-number signature for each one. Those signatures get saved to a private voice vault on the phone.
+- **Viper1** (`viper_trainer.py`, `export_viper1.py`, `viper1.onnx`): makes one voice signature and checks it against the voices saved in the vault (is this the owner?).
+- **V5** (`v4sig_model.py`, `v5_trainer.py`, `export_v5sig.py`, `v5.onnx`): a voice filter. Given the owner's signature, it pulls the owner's voice out of background noise and other people talking.
+- Helpers: `spk_model.py`, `v4_model.py`, `venomx_model.py`.
+
+The plan: V5 cleans the audio, Viper1 confirms it's the owner, and Whisper reads the phrase, all on the phone, so no voice recording ever has to leave it. These models are not wired into the web demo yet.
 
 ## Prototype limits
 
