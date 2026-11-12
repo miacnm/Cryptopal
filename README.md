@@ -87,14 +87,48 @@ iPhone app (optional): install [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 
 ## Voice filter (next step for the voice check)
 
-`voice-filter/` holds my own on-device voice models (PyTorch training code plus exported ONNX models), built for the Nayerly translator. They are the plan for making CryptoPal's voice check work in a noisy store:
+`voice-filter/` holds my own on-device voice models: PyTorch code plus ready-to-run ONNX models. All three take mono 16 kHz audio. They are the plan for making CryptoPal's voice check work in a loud store, entirely on the phone. They are not wired into the web demo yet.
 
-- **Viper2** (`viper2_model.py`, `viper2_trainer.py`, `viper2.onnx`): hears up to 3 voices in a clip and makes a 192-number signature for each one. Those signatures get saved to a private voice vault on the phone.
-- **Viper1** (`viper_trainer.py`, `export_viper1.py`, `viper1.onnx`): makes one voice signature and checks it against the voices saved in the vault (is this the owner?).
-- **V5** (`v4sig_model.py`, `v5_trainer.py`, `export_v5sig.py`, `v5.onnx`): a voice filter. Given the owner's signature, it pulls the owner's voice out of background noise and other people talking.
-- Helpers: `spk_model.py`, `v4_model.py`, `venomx_model.py`.
+| Model | What it does | Input | Output |
+|---|---|---|---|
+| **Viper2** (`viper2.onnx`) | Hears up to 3 voices in a clip and makes a voice signature (192 numbers) for each. These signatures are what get saved to the voice vault on the phone. | `audio` [1, 32000] (2 s) | `sigs` [1, 3, 192], `pres` [1, 3] (higher = that voice is really there) |
+| **Viper1** (`viper1.onnx`) | Makes one voice signature and checks it against the vault: is this the owner talking? | `audio` [1, 32000] (2 s) | `embedding` [1, 192], `overlap` [1] (0 to 1: chance more than one person is talking) |
+| **V5** (`v5.onnx`) | Voice filter. Removes music and background noise and keeps every voice Viper2 found. | `audio` [1, 23040] (1.44 s), `sig` [1, 576] (Viper2's 3 signatures in a row, zeros for empty slots) | `voices` [1, 23040] (clean audio) |
 
-The plan: V5 cleans the audio, Viper1 confirms it's the owner, and Whisper reads the phrase, all on the phone, so no voice recording ever has to leave it. These models are not wired into the web demo yet.
+The plan: V5 cleans the audio, Viper1 checks it against the owner's voice in the vault, and Whisper reads the phrase.
+
+### Try the models
+
+```bash
+pip install onnxruntime numpy soundfile
+```
+
+```python
+import numpy as np, onnxruntime as ort, soundfile as sf
+wav, sr = sf.read("clip.wav", dtype="float32")   # mono, 16 kHz, at least 2 seconds
+clip = wav[None, :32000]
+
+viper2 = ort.InferenceSession("voice-filter/viper2.onnx")
+sigs, pres = viper2.run(None, {"audio": clip})      # up to 3 voices; save the owner's to the vault
+owner = sigs[0, 0]
+
+viper1 = ort.InferenceSession("voice-filter/viper1.onnx")
+emb, overlap = viper1.run(None, {"audio": clip})
+print("same person score:", float(emb[0] @ owner))  # signatures are unit length, so 1.0 = identical
+
+v5 = ort.InferenceSession("voice-filter/v5.onnx")
+clean = v5.run(None, {"audio": wav[None, :23040], "sig": sigs.reshape(1, 576)})[0]
+sf.write("clean.wav", clean[0], 16000)
+```
+
+### Files
+
+- `viper2_model.py`, `viper2_trainer.py`: Viper2 model and training.
+- `viper_trainer.py` (model + training), `export_viper1.py`: Viper1.
+- `v4sig_model.py`, `v5_trainer.py`, `export_v5sig.py`: V5 model, training and export.
+- `spk_model.py`, `v4_model.py`, `venomx_model.py`: building blocks the three models need to run.
+
+Training (optional, needs PyTorch): `pip install torch torchaudio numpy scipy`, then `python viper2_trainer.py`, `python viper_trainer.py` or `python v5_trainer.py`. The trainers expect your own 16 kHz speech and music folders; the paths are at the top of each file.
 
 ## Prototype limits
 
