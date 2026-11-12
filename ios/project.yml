@@ -1,0 +1,37 @@
+name: CryptoPal
+options:
+  bundleIdPrefix: com.nayerly
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  CryptoPal:
+    type: application
+    platform: iOS
+    sources: [CryptoPal]
+    entitlements:
+      path: CryptoPal/CryptoPal.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:cryptopal.michaelwilson260.workers.dev
+    info:
+      path: CryptoPal/Info.plist
+      properties:
+        CFBundleDisplayName: CryptoPal
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSCameraUsageDescription: CryptoPal checks your face before it shows your money or pays. Your face stays on this phone.
+        NSMicrophoneUsageDescription: CryptoPal listens for your secret phrase before it pays.
+        NSFaceIDUsageDescription: CryptoPal uses Face ID to confirm it's you before you pay.
+        UILaunchScreen:
+          UIColorName: LaunchBlack
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: false
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nayerly.cryptopal
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"

@@ -20,7 +20,7 @@
 </style>
 </head>
 <body>
-<header class="top"><div class="logo"><span>C</span>Review Desk</div><p>A person at CryptoPal checks every panic lock and every ID + selfie request. Nothing unlocks without a human.</p></header>
+<header class="top"><div class="logo"><span>C</span>Review Desk</div><p>A person at CryptoPal checks every panic lock and every ID + selfie request. Nothing unlocks without a human. No photos or faces are kept here.</p></header>
 <main class="desk" id="desk">Loading…</main>
 <script type="module">
 const W = new URLSearchParams(location.search).get('w');
@@ -35,9 +35,8 @@ async function load() {
     (r.reviews.length ? r.reviews.map(t => `<div class="tk ${t.kind}"><h3>${title[t.kind] || t.kind}</h3>
       <p class="muted">${new Date(t.t).toLocaleString()} · ${t.status}</p><p>${esc(t.note)}</p>
       ${t.change ? `<p>Wants: ${esc(t.change.what)}</p>` : ''}
-      ${t.kind !== 'panic' ? `<div class="pics"><div><img src="/api/w/${W}/img?k=img:${t.id}:id" alt="Photo ID"><small>Photo ID · ${face(t.idVsOwner, 'vs owner')}</small></div>
-        <div><img src="/api/w/${W}/img?k=img:${t.id}:selfie" alt="Live selfie"><small>Live selfie · ${face(t.selfieVsOwner, 'vs owner')}</small></div></div>
-        <p class="muted">${face(t.idVsSelfie, 'ID vs selfie')}</p>` : '<p class="muted">The owner\'s phone shows "Processing", so a thief sees nothing unusual. Wait for the owner to call in.</p>'}
+      ${t.kind !== 'panic' ? `<ul class="rules"><li>${face(t.selfieVsOwner, 'Live selfie vs saved face')}</li><li>${t.idFaceFound ? face(t.idVsSelfie, 'Photo ID vs selfie') : 'Photo ID: no face found in the photo'}</li><li>${face(t.idVsOwner, 'Photo ID vs saved face')}</li></ul>
+        <p class="muted">The photos and faces stay on the owner's phone. CryptoPal only receives these match scores.</p>` : '<p class="muted">The owner\'s phone shows "Processing", so a thief sees nothing unusual. Wait for the owner to call in.</p>'}
       ${t.status === 'open' && t.kind !== 'panic' ? `<div class="acts2"><button data-id="${t.id}" data-ok="1">Approve</button><button class="ghost" data-id="${t.id}" data-ok="">Reject</button></div>` : ''}</div>`).join('')
       : '<p class="muted">Nothing to review.</p>');
 }

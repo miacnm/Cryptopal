@@ -22,6 +22,8 @@ const units = n => (n >= 100 ? n.toFixed(2) : n >= 1 ? n.toFixed(4) : n.toPrecis
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (url.pathname === '/.well-known/apple-app-site-association' && env.APPLE_APP_ID) // the iPhone app opens CryptoPal links
+      return new Response(JSON.stringify({ applinks: { details: [{ appIDs: [env.APPLE_APP_ID], components: [{ '/': '/*' }] }] } }), { headers: { 'content-type': 'application/json' } });
     if (url.pathname === '/api/config') return json({ paypalClientId: env.PAYPAL_CLIENT_ID || '', paypal: payPalReady(env) });
     if (url.pathname === '/api/currencies') return json(await currencies());
     if (url.pathname === '/manifest.webmanifest') { // start_url keeps the demo session when installed
@@ -88,8 +90,6 @@ function sim(a, b) { // 1 = same words, 0 = nothing alike
   }
   return 1 - p[b.length] / Math.max(a.length, b.length);
 }
-const dist = (x, y) => Math.sqrt(x.reduce((s, v, i) => s + (v - (y[i] || 0)) ** 2, 0));
-const okFace = f => Array.isArray(f) && f.length === 128 && f.every(Number.isFinite);
 const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const SCAM = /urgent|gift ?card|irs|bail|warrant|wire|verify your|crypto ?atm|investment|double your|guaranteed|customer support|refund/i;
 
@@ -112,7 +112,7 @@ async function paypal(env, path, body) { // sandbox only: never real money
 
 function seed(tz) {
   return {
-    tz: tz || 'America/Los_Angeles', clock: 0, night: false, simulate: false, seq: 1,
+    tz: tz || 'America/Los_Angeles', clock: 0, night: false, simulate: false, seq: 1, facesOff: true,
     acct: {
       me: { id: 'me', name: 'You', cash: 15, assets: { BTC: 0.004, ETH: 0.15, SOL: 2, USDC: 40 }, loans: [], limits: { night: 100, hold: 500 }, pending: [], locked: null, enrolled: null, voice: null, contacts: ['cafe'] },
       ana: { id: 'ana', name: 'Ana', cash: 120, assets: { BTC: 0.002, ETH: 0.1, DOGE: 600 }, loans: [], npc: true, cryptoOk: true },
@@ -135,13 +135,46 @@ const ADVISE = {
     pick: { type: 'string' }, reason: { type: 'string' }, why: { type: 'array', items: { type: 'string' } }
   }
 };
-const ADVISE_SYS = 'You are CryptoPal\'s payment advisor. Choose the single most efficient way to pay from the options given (use the option id exactly). Think like a careful friend: selling crypto that dropped today locks in the loss, so borrowing against it can be smarter for small amounts; borrowing costs interest, so it is a poor choice when the coin is up or the amount is big; selling crypto that rose takes profit; selling costs a 1% fee; giving crypto directly avoids that fee when the receiver accepts crypto; stablecoins (USDC, PYUSD) and cash are steady. Talk to the user as "you". Follow the task line. reason: one plain sentence, max 16 words, no jargon. why: 3 or 4 short lines that explain the choice with the exact numbers given and compare it to the next best option. Never invent numbers.';
+const ADVISE_SYS = 'You are CryptoPal\'s payment advisor. Choose the single most efficient way to pay from the options given (use the option id exactly). Think like a careful friend: selling crypto that dropped today locks in the loss, so borrowing against it can be smarter for small amounts; borrowing costs interest, so it is a poor choice when the coin is up or the amount is big; selling crypto that rose takes profit; selling costs a 1% fee; giving crypto directly avoids that fee when the receiver accepts crypto; stablecoins (USDC, PYUSD) and cash are steady. Talk to the user as "you". Follow the task line. reason: one plain sentence, max 22 words, no jargon, that names the choice and compares it to the next best option with a number, for example "Cash costs nothing, and selling Bitcoin today would lock in its 1.9% drop." Write money with a $ sign (like $0.31). Only compare two options if their costs differ. why: 3 or 4 short lines that explain the choice with the exact numbers given and compare it to the next best option. Never invent numbers.';
 const WATCH = {
   type: 'object', required: ['verdict', 'reason'], properties: {
     verdict: { type: 'string', enum: ['ok', 'hold', 'freeze'] }, reason: { type: 'string' }
   }
 };
 const WATCH_SYS = 'You are CryptoPal\'s security watchdog. You protect the owner from phone thieves, scams, and people forcing or drugging the owner into sending money. Compare this send to the owner\'s normal behavior. verdict "ok" = normal. "hold" = delay it 24 hours so the owner can cancel when safe. "freeze" = lock the account until the owner verifies with photo ID and a live selfie. Use freeze only when several red flags stack up (for example night + new person + voice sounding different). Scam signs: urgency, gift cards, "verify your account", bail, investments. reason: one short sentence the owner will read, plain words.';
+
+const TEXT = { type: 'object', required: ['text'], properties: { text: { type: 'string' } } };
+const INSIGHT_SYS = 'You are CryptoPal\'s money coach inside a demo app with pretend money. Give the user one tip about paying for things today, about the focus coin, using only the numbers given. Facts you must respect: if a coin is down today, selling it to pay locks in that drop; borrowing against it instead keeps the coin, but costs 8% a year in interest and gets riskier if the price keeps falling (never call borrowing a sure thing and never say leverage). If a coin is up today, selling a little to pay takes some profit, with a 1% fee. Cash and stablecoins are steady. Whenever you mention borrowing, also say it costs interest and gets riskier if the price keeps falling. Only talk about selling or borrowing a coin the user owns (youOwnUsd above 0); never say to sell cash. Lead with the move and the useful idea, then the catch. Example: "Solana is down 4% today. Paying with cash avoids locking in that drop; borrowing against your SOL keeps it, but costs interest and gets riskier if it keeps falling." Talk to the user as "you", plain words, no hype, never promise gains.';
+const MOVERS_SYS = 'You are CryptoPal\'s market watcher in a demo app. Using only the data given, tell the user the biggest crypto moves in the last hour and name any coins trending today. Plain words, exact numbers with one decimal, no buy or sell advice, no hype.';
+function tipFallback(f) {
+  const c = f.changeTodayPct;
+  if (c == null) return 'Cash and stablecoins are the steadiest way to pay today.';
+  if (c < 0) return `${f.name} is down ${Math.abs(c).toFixed(1)}% today. Selling it to pay would lock in that drop; borrowing against it keeps your ${f.coin} but costs interest.`;
+  return `${f.name} is up ${c.toFixed(1)}% today. Selling a little to pay would take some profit (1% fee).`;
+}
+function moversFallback(movers, trend) {
+  const m = movers.slice(0, 2).map(x => `${x.coin} ${x.changeLastHourPct >= 0 ? '+' : ''}${x.changeLastHourPct.toFixed(1)}%`).join(', ');
+  return (m ? `Biggest moves this hour: ${m}.` : '') + (trend.length ? ` Trending today: ${trend.slice(0, 3).join(', ')}.` : '');
+}
+const MARKET = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'LTC', 'SHIB', 'SUI', 'XLM', 'PEPE', 'USDC'];
+let MK = { t: 0, rows: [], trend: [], tt: 0 };
+async function marketData() {
+  if (Date.now() - MK.t < 120e3 && MK.rows.length) return MK;
+  const ua = { headers: { 'user-agent': 'cryptopal-demo' } };
+  const px = await prices(MARKET);
+  const h1 = await Promise.all(MARKET.map(async s => { // change over the last hour, from hourly candles
+    if (STABLE.includes(s) || !px[s]?.usd) return STABLE.includes(s) ? 0 : null;
+    const c = await fetch(`https://api.exchange.coinbase.com/products/${s}-USD/candles?granularity=3600`, ua).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    return Array.isArray(c) && c.length > 1 && +c[1][4] > 0 ? (px[s].usd / +c[1][4] - 1) * 100 : null;
+  }));
+  const rows = MARKET.map((s, i) => ({ sym: s, name: px[s]?.name || s, usd: px[s]?.usd ?? null, h1: h1[i] == null ? null : r2(h1[i]), h24: px[s]?.change24 == null ? null : r2(px[s].change24) })).filter(r => r.usd);
+  if (Date.now() - MK.tt > 600e3) { // trending coins today (CoinGecko, free), at most every 10 minutes
+    const t = await fetch('https://api.coingecko.com/api/v3/search/trending', { headers: { 'user-agent': 'cryptopal-demo', accept: 'application/json' } }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (t?.coins) { MK.trend = t.coins.slice(0, 7).map(c => c.item?.symbol?.toUpperCase()).filter(Boolean); MK.tt = Date.now(); }
+  }
+  MK.rows = rows; MK.t = Date.now();
+  return MK;
+}
 
 export class World extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.env = env; }
@@ -152,6 +185,7 @@ export class World extends DurableObject {
     const path = url.pathname.slice(1);
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     this.w = this.w || (await this.ctx.storage.get('w')) || seed(body.tz);
+    if (!this.w.facesOff) await this.forgetFaces();
     try {
       await this.tick();
       const out = await this.route(path, body, url);
@@ -164,6 +198,18 @@ export class World extends DurableObject {
     }
   }
 
+  // Older versions kept the owner's face numbers and the ID + selfie photos here. Delete them for good.
+  // An owner whose face lived here sets up again; this time the face stays on their phone.
+  async forgetFaces() {
+    const me = this.w.acct.me;
+    if (me.enrolled?.face) { me.enrolled = null; me.voice = null; }
+    else if (me.enrolled && 'face' in me.enrolled) delete me.enrolled.face;
+    const imgs = [...(await this.ctx.storage.list({ prefix: 'img:' })).keys()];
+    for (let i = 0; i < imgs.length; i += 128) await this.ctx.storage.delete(imgs.slice(i, i + 128));
+    this.w.facesOff = true;
+    await this.ctx.storage.put('w', this.w);
+  }
+
   async route(path, b, url) {
     const w = this.w, me = w.acct.me;
     switch (path) {
@@ -171,6 +217,8 @@ export class World extends DurableObject {
       case 'setup': return json(await this.setup(b));
       case 'voice': return json(await this.voice(b));
       case 'suggest': return json(await this.suggest(b));
+      case 'insight': return json(await this.insight(b));
+      case 'market': return json(await this.marketView(b));
       case 'send': return json(await this.send(b));
       case 'cancel': return json(await this.cancel(b));
       case 'undo': return json(await this.undo(b));
@@ -232,14 +280,6 @@ export class World extends DurableObject {
       }
       case 'verify': return json(await this.verify(b));
       case 'reviews': return json({ reviews: w.reviews.slice().reverse().map(r => ({ ...r, change: r.change ? { what: r.change.what } : null })), locked: me.locked });
-      case 'img': {
-        const k = url.searchParams.get('k') || '';
-        if (!/^img:[a-z0-9]+:(id|selfie)$/.test(k)) throw err('Bad image.');
-        const d = await this.ctx.storage.get(k);
-        if (!d) throw err('Not found.', 404);
-        const [, mime, b64] = d.match(/^data:(image\/[a-z]+);base64,(.+)$/) || [];
-        return new Response(Uint8Array.from(atob(b64), c => c.charCodeAt(0)), { headers: { 'content-type': mime, 'cache-control': 'no-store' } });
-      }
       case 'decide': return json(this.decide(b));
       case 'demo': {
         if (b.reset) { this.w = seed(w.tz); await this.ctx.storage.deleteAll(); return json({ ok: true }); }
@@ -247,6 +287,27 @@ export class World extends DurableObject {
         if (typeof b.simulate === 'boolean') w.simulate = b.simulate;
         if (b.skipHours > 0) { w.clock += Math.min(+b.skipHours, 72) * HOUR; await this.tick(); }
         return json({ ok: true });
+      }
+      case 'addcash': { // demo money when PayPal sandbox isn't connected
+        if (payPalReady(this.env)) throw err('Use PayPal to add cash.');
+        const usd = r2(+b.usd);
+        if (!(usd >= 1 && usd <= 10000)) throw err('Add between $1 and $10,000.');
+        me.cash = r2(me.cash + usd);
+        w.tx.push({ id: 't' + w.seq++, t: this.now(), kind: 'topup', from: 'demo', to: 'me', asset: 'USD', usd, status: 'done', source: String(b.source || '').slice(0, 40) || null });
+        return json({ ok: true, usd });
+      }
+      case 'pretend': { // Portfolio Send / Receive with pretend contacts
+        const usd = r2(+b.usd), who = String(b.who || '').slice(0, 30) || 'Friend';
+        if (!(usd > 0 && usd <= 10000)) throw err('Enter an amount.');
+        if (b.kind === 'send') {
+          if (me.cash < usd) throw err('Not enough cash. Add funds first.');
+          me.cash = r2(me.cash - usd);
+          w.tx.push({ id: 't' + w.seq++, t: this.now(), kind: 'send', from: 'me', to: 'contact', toName: who, asset: 'USD', method: 'cash', usd, status: 'done' });
+        } else {
+          me.cash = r2(me.cash + usd);
+          w.tx.push({ id: 't' + w.seq++, t: this.now(), kind: 'receive', from: 'contact', fromName: who, to: 'me', asset: 'USD', usd, status: 'done' });
+        }
+        return json({ ok: true, usd });
       }
       case 'paypal/order': {
         if (!payPalReady(this.env)) throw err('PayPal sandbox is not connected yet.');
@@ -294,7 +355,7 @@ export class World extends DurableObject {
 
   async view() {
     const w = this.w, me = w.acct.me;
-    const syms = [...new Set(Object.values(w.acct).flatMap(a => Object.keys(a.assets)).concat(me.loans.map(l => l.asset)))];
+    const syms = [...new Set(Object.values(w.acct).flatMap(a => Object.keys(a.assets)).concat(me.loans.map(l => l.asset), ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'USDC']))]; // + the coins on the Pay tab
     const px = await prices(syms);
     const pub = a => ({ id: a.id, name: a.name, cash: r2(a.cash), assets: a.assets, merchant: !!a.merchant, cryptoOk: !!a.cryptoOk });
     const nightUsed = this.nightUsed();
@@ -308,7 +369,8 @@ export class World extends DurableObject {
       },
       others: [pub(w.acct.ana), pub(w.acct.cafe)],
       requests: Object.values(w.req).filter(r => r.status === 'open' && this.now() - r.t < 30 * 60e3),
-      tx: w.tx.slice(-40).reverse().map(t => ({ ...t, fromName: w.acct[t.from]?.name || 'PayPal', toName: w.acct[t.to]?.name || t.to })),
+      tx: w.tx.slice(-40).reverse().map(t => ({ ...t, fromName: w.acct[t.from]?.name || t.fromName || 'PayPal', toName: w.acct[t.to]?.name || t.toName || t.to })),
+      market: Object.fromEntries(MARKET.map(s => [s, PX.usd[s] ?? null])), // real prices for the pretend market (no extra calls)
       backstage: { locked: me.locked ? me.locked.kind : null, openReviews: w.reviews.filter(r => r.status === 'open').length, paypal: payPalReady(this.env) }
     };
   }
@@ -321,6 +383,11 @@ export class World extends DurableObject {
   async setup(b) {
     const w = this.w, me = w.acct.me;
     if (me.enrolled) throw err('Already set up. Use Reset demo to start over.');
+    if (b.demo === true) { // pretend demo: any face and any voice pass; nothing biometric is kept
+      me.name = String(b.name || 'You').slice(0, 24) || 'You';
+      me.enrolled = { phrase: String(b.phrase || 'pay the man').trim() || 'pay the man', panic: String(b.panic || 'call my grandma').trim(), demo: true, at: this.now() };
+      return { ok: true };
+    }
     const phrase = String(b.phrase || '').trim(), panic = String(b.panic || '').trim();
     if (norm(phrase).split(' ').length < 3) throw err('Make your secret phrase at least 3 words.');
     if (norm(panic).split(' ').length < 2) throw err('Make your panic phrase at least 2 words.');
@@ -328,10 +395,11 @@ export class World extends DurableObject {
     const c = w.checks[b.checkId];
     if (!c || c.purpose !== 'enroll') throw err('Say your secret phrase once so CryptoPal learns your voice.');
     if (!c.simulated && sim(c.text, phrase) < 0.7) throw err(`I heard "${c.text}". Say your secret phrase exactly as you typed it.`);
-    if (!okFace(b.face) && !(b.faceSim && w.simulate)) throw err('Look at the camera so CryptoPal learns your face.');
+    // The face is saved on the owner's phone only. The server never receives it.
+    if (b.faceOnDevice !== true && b.faceSkipped !== true && !(b.faceSim && w.simulate)) throw err('Look at the camera so CryptoPal learns your face.');
     if (b.tz) try { new Intl.DateTimeFormat('en-US', { timeZone: b.tz }); w.tz = b.tz; } catch { }
     me.name = String(b.name || 'You').slice(0, 24) || 'You';
-    me.enrolled = { phrase, panic, face: okFace(b.face) ? b.face : null, at: this.now() };
+    me.enrolled = { phrase, panic, faceOnDevice: b.faceOnDevice === true, at: this.now() };
     me.voice = c.rate ? { rate: c.rate, clarity: c.clarity ?? -0.3 } : null;
     c.used = true;
     return { ok: true };
@@ -387,6 +455,40 @@ export class World extends DurableObject {
       if (typeof o === 'string') o = JSON.parse(o);
       return o && typeof o === 'object' ? o : null;
     } catch (e) { console.log('ai failed', e.message); return null; }
+  }
+
+  // ---------- AI tip on the Pay tab: a different coin each time ----------
+  async insight(b) {
+    const me = this.w.acct.me;
+    const syms = [...new Set(['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', ...Object.keys(me.assets)])];
+    const px = await prices(syms);
+    const coins = syms.filter(s => px[s]?.usd && px[s].crypto && !STABLE.includes(s))
+      .map(s => ({ coin: s, name: px[s].name, changeTodayPct: px[s].change24 == null ? null : r2(px[s].change24), youOwnUsd: r2((me.assets[s] || 0) * px[s].usd) }));
+    if (!coins.length) return { text: 'Prices are loading. Check back in a minute.' };
+    const ranked = coins.filter(c => c.changeTodayPct != null).sort((x, y) => Math.abs(y.changeTodayPct) - Math.abs(x.changeTodayPct));
+    const owned = ranked.filter(c => c.youOwnUsd > 0).slice(0, 4); // talk about coins you own first
+    const pool = owned.length ? owned : ranked.length ? ranked.slice(0, 4) : coins;
+    const focus = pool[Math.floor(Math.random() * pool.length)];
+    const sys = INSIGHT_SYS + (b.style === 'detailed' ? ' Length: two short sentences.' : ' Length: at most 32 words.')
+      + (b.risk === 'bold' ? ' The user is fine with some risk.' : ' The user prefers careful choices.');
+    const o = await this.ai(sys, { focus, cashUsd: r2(me.cash), hasLoans: me.loans.length > 0 }, TEXT, 120);
+    return { text: String(o?.text || tipFallback(focus)).slice(0, 260), coin: focus.coin };
+  }
+
+  // ---------- Market tab: live prices, biggest moves this hour, trending coins ----------
+  async marketView(b) {
+    const m = await marketData();
+    const movers = m.rows.filter(r => r.h1 != null && !STABLE.includes(r.sym)).sort((x, y) => Math.abs(y.h1) - Math.abs(x.h1)).slice(0, 4)
+      .map(r => ({ coin: r.sym, changeLastHourPct: r2(r.h1), changeTodayPct: r.h24 == null ? null : r2(r.h24) }));
+    const input = {};
+    if (b.movers !== false) input.biggestMovesThisHour = movers;
+    if (b.newCoins !== false && m.trend.length) input.trendingToday = m.trend.slice(0, 5);
+    let bubble = '';
+    if (Object.keys(input).length) {
+      const o = await this.ai(MOVERS_SYS + (b.style === 'detailed' ? ' Two or three short sentences.' : ' At most two short sentences.'), input, TEXT, 140);
+      bubble = String(o?.text || moversFallback(movers, m.trend)).slice(0, 300);
+    }
+    return { rows: m.rows, trend: m.trend, bubble };
   }
 
   // ---------- ways to pay + AI advice ----------
@@ -445,12 +547,15 @@ export class World extends DurableObject {
   authorize(a = {}) {
     const w = this.w, me = w.acct.me;
     if (!me.enrolled) throw err('Set up CryptoPal first.');
+    if (a.demo === true) return { panic: false, c: null, phrase: 1, faceDist: 0.3, faceSkipped: false, voice: null, demo: true };
     const c = w.checks[a.checkId];
     if (!c || c.used || c.purpose !== 'phrase' || this.now() - c.t > 5 * 60e3) throw err('Say your secret phrase again.');
     c.used = true;
     if (sim(c.text, me.enrolled.panic) >= 0.8) return { panic: true, c };
+    // The phone compares the live face with the face saved on it and sends only the result.
     let faceDist = null;
-    if (okFace(a.face) && me.enrolled.face) faceDist = dist(a.face, me.enrolled.face);
+    if (a.faceOk === true && Number.isFinite(a.faceDist)) faceDist = r2(a.faceDist);
+    else if (a.faceSkipped === true) faceDist = null; // the phone couldn't run the face check; the AI watchdog counts it as a risk
     else if (!(a.faceSim && w.simulate)) throw err('Look at the camera to confirm it is you.');
     const phrase = sim(c.text, me.enrolled.phrase);
     if (phrase < 0.8) throw err(`That secret phrase didn't match. I heard "${c.text}".`);
@@ -460,7 +565,7 @@ export class World extends DurableObject {
       const speed = c.rate / me.voice.rate, drop = me.voice.clarity - (c.clarity ?? me.voice.clarity);
       voice = { speedVsNormal: r2(speed), clarityDrop: r2(drop), soundsDifferent: speed < 0.72 || drop > 0.35 };
     }
-    return { panic: false, c, phrase, faceDist, voice };
+    return { panic: false, c, phrase, faceDist, faceSkipped: a.faceSkipped === true && faceDist == null, voice };
   }
 
   async panic(c, what) {
@@ -490,7 +595,7 @@ export class World extends DurableObject {
     if (a.panic) { await this.panic(a.c, `send ${money(usd)} to ${to.name}`); return looksFine(); }
 
     const night = this.isNight();
-    if (night) {
+    if (night && !a.demo) {
       const left = me.limits.night - this.nightUsed();
       if (usd > left) throw err(`Night limit: only ${money(Math.max(0, left))} more can go out until 6 AM. That protects you if someone forces you to send money at night.`);
     }
@@ -508,23 +613,27 @@ export class World extends DurableObject {
       ownerLocalTime: new Intl.DateTimeFormat('en-US', { timeZone: w.tz, hour: 'numeric', minute: '2-digit' }).format(new Date(this.now())) + (w.night ? ' (demo: pretend 2 AM)' : ''),
       isNight: night, note: memo || null, way: opt.label,
       voice: a.voice || 'no voice baseline yet', secretPhraseMatch: r2(a.phrase),
-      face: a.faceDist == null ? 'not checked (demo mode)' : a.faceDist < 0.45 ? 'strong match' : 'match'
+      face: a.faceSkipped ? 'skipped (the phone could not run the face check)' : a.faceDist == null ? 'not checked (demo mode)' : a.faceDist < 0.45 ? 'strong match' : 'match'
     };
     const slur = !!a.voice?.soundsDifferent;
-    const score = (isNew ? 1 : 0) + (usd > 3 * typical ? 1 : 0) + (lastHour >= 3 ? 1 : 0) + (night ? 1 : 0) + (slur ? 2 : 0) + (SCAM.test(memo) ? 2 : 0);
+    const score = (isNew ? 1 : 0) + (usd > 3 * typical ? 1 : 0) + (lastHour >= 3 ? 1 : 0) + (night ? 1 : 0) + (slur ? 2 : 0) + (SCAM.test(memo) ? 2 : 0) + (a.faceSkipped ? 1 : 0);
     const ai = await this.ai(WATCH_SYS, f, WATCH, 120);
     let verdict = ['ok', 'hold', 'freeze'].includes(ai?.verdict) ? ai.verdict : score >= 4 ? 'freeze' : score >= 2 ? 'hold' : 'ok';
     if (score >= 4) verdict = 'freeze';
     else if ((slur || score >= 2) && verdict === 'ok') verdict = 'hold';
     let reason = String(ai?.reason || '').slice(0, 160) || (slur ? 'You sound different than usual, so this waits 24 hours.' : verdict === 'ok' ? 'Looks normal.' : 'This is unusual for you, so it waits 24 hours.');
     if (slur && !/sound|voice|speech/i.test(reason)) reason += ' Your voice sounds different than usual.';
+    if (a.demo) { // live demo: the watchdog still checks and comments, but a demo payment always goes through
+      if (verdict !== 'ok') reason = 'Checked: a normal purchase for you.';
+      verdict = 'ok';
+    }
 
     if (verdict === 'freeze') {
       me.locked = { kind: 'freeze', t: this.now(), reason };
       w.tx.push({ id: 't' + w.seq++, t: this.now(), kind: r ? 'pay' : 'send', from: 'me', to: toId, usd, asset: opt.asset, method: opt.method, status: 'blocked', reason, watchdog: f });
       return { status: 'frozen', reason };
     }
-    const held = verdict === 'hold' || usd > me.limits.hold;
+    const held = !a.demo && (verdict === 'hold' || usd > me.limits.hold);
     if (verdict === 'ok' && held) reason = `Over your ${money(me.limits.hold)} limit, so it waits 24 hours. You can cancel it until then.`;
 
     // take the money now (so it can't be spent twice); the receiver gets it now or after the hold
@@ -535,7 +644,7 @@ export class World extends DurableObject {
     w.tx.push(t);
     if (r) { r.status = 'paid'; r.tx = t.id; }
     if (!me.contacts.includes(toId)) me.contacts.push(toId);
-    if (me.voice && a.c.rate && !slur) { me.voice.rate = me.voice.rate * 0.8 + a.c.rate * 0.2; if (a.c.clarity != null) me.voice.clarity = me.voice.clarity * 0.8 + a.c.clarity * 0.2; }
+    if (me.voice && a.c?.rate && !slur) { me.voice.rate = me.voice.rate * 0.8 + a.c.rate * 0.2; if (a.c.clarity != null) me.voice.clarity = me.voice.clarity * 0.8 + a.c.clarity * 0.2; }
     if (!held) await this.deliver(t);
     return { status: t.status, tx: t, reason };
   }
@@ -605,11 +714,12 @@ export class World extends DurableObject {
     return { status: 'undone' };
   }
 
-  async verify(b) { // photo ID + live selfie, checked by a person
+  async verify(b) { // photo ID + live selfie: compared on the owner's phone, the scores reviewed by a person
     const w = this.w, me = w.acct.me;
     const kind = b.kind === 'change' ? 'change' : 'unlock';
-    const img = s => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(s) && s.length < 1_500_000;
-    if (!img(b.idPhoto) || !img(b.selfie)) throw err('Add a photo of your ID and take a live selfie.');
+    // Photos and faces never come here. Only how well they matched (numbers like 0.42).
+    const score = x => (Number.isFinite(x) && x >= 0 && x < 3 ? r2(x) : null);
+    if (b.photosOnDevice !== true || score(b.selfieVsOwner) == null && score(b.idVsSelfie) == null) throw err('Add a photo of your ID and take a live selfie.');
     let change = null;
     if (kind === 'change') {
       const n = r2(+b.night), h = r2(+b.hold), p = String(b.phrase || '').trim(), q = String(b.panic || '').trim();
@@ -621,15 +731,11 @@ export class World extends DurableObject {
       change.what = change.what.join('; ');
     }
     const id = 'k' + w.seq++;
-    const m = x => (okFace(x) && me.enrolled?.face ? r2(dist(x, me.enrolled.face)) : null);
     w.reviews.push({
       id, t: this.now(), kind, status: 'open', change,
-      selfieVsOwner: m(b.selfieFace), idVsOwner: m(b.idFace),
-      idVsSelfie: okFace(b.idFace) && okFace(b.selfieFace) ? r2(dist(b.idFace, b.selfieFace)) : null,
+      selfieVsOwner: score(b.selfieVsOwner), idVsOwner: score(b.idVsOwner), idVsSelfie: score(b.idVsSelfie), idFaceFound: !!b.idFaceFound,
       note: kind === 'unlock' ? 'Owner asks to unlock CryptoPal. In real life they also call in.' : 'Owner asks to change security settings. Takes effect 24 hours after approval.'
     });
-    await this.ctx.storage.put(`img:${id}:id`, b.idPhoto);
-    await this.ctx.storage.put(`img:${id}:selfie`, b.selfie);
     return { ok: true, id };
   }
 
