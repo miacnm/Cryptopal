@@ -348,6 +348,7 @@ details.coin > button { display: block; width: calc(100% - 28px); margin: 10px 1
 
 /* a double-tap means pay: never zoom the page */
 html, body { touch-action: manipulation; }
+.padsheet .ppbtn { margin: 14px 0 6px; min-height: 52px; }
 .picker .bubble { margin-top: 4px; }
 
 /* pressed buttons: easy to see in the demo video */

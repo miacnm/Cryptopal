@@ -344,6 +344,7 @@ function padView() {
   else if (P.step === 'pick') body = `<p class="padsum">${money(amtNum)}</p><p class="muted center2">${P.kind === 'add' ? 'Add from' : 'Send to'}</p>
       ${(P.kind === 'add' ? SOURCES : PEOPLE).map(([i, n]) => `<button class="prow" data-a="padPick" data-n="${esc(n)}"><span class="cico how">${esc(i)}</span><span class="cn"><b>${esc(n)}</b></span><span class="chev">›</span></button>`).join('')}`;
   else if (P.step === 'wait') body = `<p class="padsum">${money(amtNum)}</p><div class="qr" data-qr="${esc(location.origin + '/?w=' + W)}"></div><p class="status center2">Waiting for Ana to tap… (pretend)</p><div class="spin"></div>`;
+  else if (P.step === 'paypal') body = `<p class="padsum">${money(amtNum)}</p><p class="muted center2">Log in with a PayPal sandbox account (test money)</p><div id="ppbtn" class="ppbtn"></div>`;
   else if (P.step === 'busy') body = `<p class="padsum">${money(amtNum)}</p><div class="spin"></div><p class="status center2">${P.kind === 'add' ? 'Adding…' : 'Sending…'}</p>`;
   else body = `<div class="result ok"><div class="big">✓</div><b>${P.kind === 'add' ? `Added ${money(amtNum)}` : P.kind === 'send' ? `Sent ${money(amtNum)}` : `Got ${money(amtNum)}`}</b><p class="muted">${esc(P.done || '')}</p><button data-a="padClose">Done</button></div>`;
   return `<div class="sheet padsheet"><div class="grab"></div><div class="bar"><b>${title}</b><button class="link" data-a="padClose">Cancel</button></div>${P.err ? `<p class="note err">${esc(P.err)}</p>` : ''}${body}</div>`;
@@ -744,7 +745,7 @@ const actions = {
   pickSet: el => { PAYSEL.asset = el.dataset.s; if (PAYSEL.asset === 'USD') PAYSEL.method = 'cash'; else if (PAYSEL.method === 'cash') PAYSEL.method = 'sell'; savePaySel(); U.picker = false; renderMe(); },
   usePick: el => { const id = el.dataset.id; if (id === 'cash') { PAYSEL.asset = 'USD'; PAYSEL.method = 'cash'; } else { const [m, a] = id.split(':'); PAYSEL.asset = a; PAYSEL.method = m === 'give' ? 'sell' : m; } savePaySel(); U.picker = false; renderMe(); },
   padOpen: el => { U.pad = { kind: el.dataset.k, step: 'amount', amt: '0' }; renderMe(); },
-  padClose: () => { U.pad = null; renderMe(); },
+  padClose: () => { U.pad = null; U.ppOpen = false; renderMe(); },
   padKey: el => { const P = U.pad, k = el.dataset.k; let a = P.amt;
     if (k === '⌫') a = a.length > 1 ? a.slice(0, -1) : '0';
     else if (k === '.') { if (!a.includes('.')) a += '.'; }
@@ -755,7 +756,9 @@ const actions = {
       try { await api('pretend', { kind: 'receive', usd: +P.amt, who: 'Ana' }); P.done = 'From Ana (pretend)'; P.step = 'done'; } catch (e) { P.err = e.message; P.step = 'amount'; }
       await refresh(true); renderMe(); return; }
     P.step = 'pick'; renderMe(); },
-  padPick: async el => { const P = U.pad, who = el.dataset.n; P.step = 'busy'; renderMe();
+  padPick: async el => { const P = U.pad, who = el.dataset.n;
+    if (P.kind === 'add' && who === 'PayPal' && CFG.paypal) { P.err = null; P.step = 'paypal'; U.ppOpen = true; renderMe(); return padPayPal(P); }
+    P.step = 'busy'; renderMe();
     try {
       if (P.kind === 'add') { await api('addcash', { usd: +P.amt, source: who }); P.done = `From ${who} (pretend)`; }
       else { await api('pretend', { kind: 'send', usd: +P.amt, who }); P.done = `To ${who} (pretend)`; }
@@ -911,6 +914,27 @@ async function addCash() {
   } catch { U.ppOpen = false; box.innerHTML = '<p class="note err">PayPal didn\'t load.</p>'; }
 }
 actions.ppclose = () => { U.ppOpen = false; renderMe(); };
+// Add funds from PayPal: real PayPal sandbox checkout (create order, buyer approves, server captures it).
+async function padPayPal(P) {
+  const back = msg => { U.ppOpen = false; if (U.pad !== P) return; P.err = msg; P.step = 'pick'; renderMe(); };
+  try {
+    if (!window.paypal) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(CFG.paypalClientId)}&currency=USD&intent=capture&components=buttons`; s.onload = res; s.onerror = rej; document.head.append(s); });
+    if (U.pad !== P || P.step !== 'paypal') return;
+    await window.paypal.Buttons({
+      fundingSource: window.paypal.FUNDING.PAYPAL,
+      style: { height: 48, label: 'pay', shape: 'pill' },
+      createOrder: async () => (await api('paypal/order', { usd: +P.amt })).id,
+      onApprove: async d => {
+        P.step = 'busy'; renderMe();
+        try { const r = await api('paypal/capture', { orderId: d.orderID }); P.amt = String(r.usd); P.done = 'From PayPal (sandbox)'; P.step = 'done'; }
+        catch (e) { P.err = e.message; P.step = 'pick'; }
+        U.ppOpen = false; await refresh(true); renderMe();
+      },
+      onCancel: () => back(null),
+      onError: e => back(e?.message || 'PayPal error')
+    }).render('#ppbtn');
+  } catch { back("PayPal didn't load. Try again."); }
+}
 
 let lastTap = 0;
 scrMe.addEventListener('click', e => {

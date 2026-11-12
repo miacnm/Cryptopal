@@ -288,8 +288,7 @@ export class World extends DurableObject {
         if (b.skipHours > 0) { w.clock += Math.min(+b.skipHours, 72) * HOUR; await this.tick(); }
         return json({ ok: true });
       }
-      case 'addcash': { // demo money when PayPal sandbox isn't connected
-        if (payPalReady(this.env)) throw err('Use PayPal to add cash.');
+      case 'addcash': { // pretend money (Bank, Debit card, Apple Pay). The PayPal source uses the real PayPal sandbox instead.
         const usd = r2(+b.usd);
         if (!(usd >= 1 && usd <= 10000)) throw err('Add between $1 and $10,000.');
         me.cash = r2(me.cash + usd);
@@ -312,7 +311,7 @@ export class World extends DurableObject {
       case 'paypal/order': {
         if (!payPalReady(this.env)) throw err('PayPal sandbox is not connected yet.');
         const usd = r2(+b.usd);
-        if (!(usd >= 1 && usd <= 500)) throw err('Add between $1 and $500.');
+        if (!(usd >= 1 && usd <= 10000)) throw err('Add between $1 and $10,000.');
         const o = await paypal(this.env, '/v2/checkout/orders', { intent: 'CAPTURE', purchase_units: [{ amount: { currency_code: 'USD', value: usd.toFixed(2) }, description: 'Add cash to CryptoPal (sandbox)' }] });
         return json({ id: o.id });
       }

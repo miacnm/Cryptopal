@@ -2,57 +2,63 @@
 
 **Pay with crypto in a tap. AI picks the smartest way to pay and guards every send.**
 
-Live demo: https://cryptopal.michaelwilson260.workers.dev (every visitor gets their own sandbox, no sign-up)
+Live demo: https://cryptopal.michaelwilson260.workers.dev (no sign-up; every visitor gets their own pretend wallet)
 
-Crypto is hard to spend. You have to decide whether to sell, which coin, and when, and a phone thief or a scammer can drain it in seconds. CryptoPal makes crypto work like a tap-to-pay card, with an AI advisor in front of every payment and an AI watchdog behind it.
+Crypto is hard to spend. You have to decide which coin, whether to sell it or borrow against it, and when, and a phone thief can drain it in seconds. CryptoPal makes crypto work like a tap-to-pay card, with an AI advisor in front of every payment and an AI watchdog behind it. Everything in the demo is pretend money; PayPal runs in its sandbox.
 
 ## What it does
 
-- **Double-click the side button** (or say "CryptoPal pay bitcoin") and tap phones with the register, or scan its QR code.
-- **Four ways to pay, AI pick on top:**
-  - **Sell**: sells just enough crypto, at 1% under market (CryptoPal's fee).
-  - **Borrow**: borrow against your crypto at today's price and keep the crypto (up to 50% of its value, 8% a year).
-  - **Give**: send the crypto itself to another CryptoPal user, with no fee.
-  - **Cash**: your dollar balance, added with PayPal.
-- **Tap "?"** to see why the AI picked it, with the real numbers.
-- **Send and receive** any crypto or currency by tap or QR code. Add any coin or currency Coinbase lists.
-- **The store always gets dollars**, paid out through PayPal.
+Three tabs: **Pay**, **Market**, **Portfolio**.
 
-## Security built for real-world theft
+- **Double-tap to pay.** Double-tap anywhere on the Pay tab (or tap Pay). iPhone Face ID, CryptoPal's own face check and a voice check all start together. Then **Pay now**, hold near the reader, done.
+- **AI picks how to pay.** Pick what to pay with (cash or any coin you own) and how: **Sell asset**, **Borrow against** it, or **Use cash**. Your choice is saved for next time. An AI bubble recommends the smartest option with real numbers, for example "Cash costs nothing, and selling Bitcoin today would lock in its 1.9% drop." One tap uses the AI pick.
+- **AI watchdog** checks every payment against your normal behavior (time, new recipient, amount, scam words) and explains its verdict on the receipt.
+- **Market:** live crypto prices with pretend trading (buy and sell inside your account). A bubble sums up the biggest moves this hour.
+- **Portfolio:** total value, a color bar of what you hold, holdings with Buy / Sell, loans and activity. Add any coin or any country's currency.
+- **Add funds** with a number pad. **PayPal** uses the real PayPal sandbox checkout; Bank, Debit card and Apple Pay are pretend. **Send** and **Receive** with pretend contacts.
+- **AI settings:** choose which tips the AI shows and how careful it is.
 
-- **CryptoPal's own face + voice on every send.** Unlocking the phone with Face ID or a passcode never unlocks CryptoPal. Every send, cancel or undo needs the owner's face (matched on the device) and their spoken secret phrase.
-- **Night limit:** only $100 total can leave between 10 PM and 6 AM. Raising it takes a photo ID, a live selfie and 24 hours.
-- **24-hour hold** on big sends, so a forced payment can be canceled once you're safe.
-- **AI watchdog** checks every send against your normal behavior: time of night, new recipient, amount, scam words in the note, and **whether your voice sounds slurred or different from usual** (speech speed and clarity compared with your enrolled voice). Unusual sends wait 24 hours. Stacked red flags freeze the account until a person checks your ID + selfie.
-- **Panic phrase:** if someone forces you (including with drugs like scopolamine), say your panic phrase instead. The phone shows "Processing" so the thief sees nothing unusual, but the account locks and a person at CryptoPal is alerted. It stays locked until the owner calls in with photo ID and a live selfie.
-- **Human review desk** (`/review`): every panic lock, unlock and security change is approved by a person.
+## Privacy: faces never leave the phone
 
-## How PayPal is used
+The face check runs on the device (face-api in the browser, plus iPhone Face ID in the app). Face data is kept only in that phone's local storage. The server never receives or stores a face image or face data; it only gets "matched / not matched". In the demo, any face and any voice pass.
 
-- **PayPal Orders API v2 + JavaScript SDK:** "Add cash with PayPal" creates and captures an order in the sandbox and credits the CryptoPal balance.
-- **PayPal Payouts API:** when a customer pays the café with crypto, the café receives US dollars through a sandbox payout. The payout batch ID shows on the register and in the activity list.
-- Sandbox only. No real money moves.
+## Security engine (src/worker.js)
+
+Built into the server for real accounts:
+
+- **Night limit:** only $100 can leave between 10 PM and 6 AM.
+- **24-hour hold** on big or unusual sends, so a forced payment can be canceled once you're safe.
+- **Freeze** when red flags stack up, until a person checks a photo ID and live selfie.
+- **Panic phrase:** say it instead of your phrase and the account locks quietly.
+- **Human review desk** (`/review`) approves every lock, unlock and security change.
+
+In the demo pay flow, payments always go through (no holds) so a live demo never gets stuck; the watchdog still runs and explains its check. On a computer, the **Demo controls** panel next to the phone lets you try the night limit and the review desk.
+
+## How PayPal is used (sandbox only, no real money)
+
+- **PayPal JavaScript SDK + Orders API v2:** Portfolio → Add funds → **PayPal** opens the PayPal sandbox checkout. The server creates the order, the buyer approves it, and the server captures it and adds the dollars to your CryptoPal cash.
+- **Payouts API v1:** when you pay the store, the store receives US dollars through a sandbox payout to its PayPal account. The payout ID shows on the Paid screen.
+- **OAuth 2.0 client credentials** sign every server call. The secret lives only in a Cloudflare secret, never in the code.
 
 ## How AI is used (Cloudflare Workers AI)
 
 | Job | Model |
 |---|---|
-| Voice commands and the secret phrase, with word timings used to measure speech speed and clarity | `@cf/openai/whisper-large-v3-turbo` |
-| Turning "send 20 dollars to Ana in ethereum" into an action | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (JSON mode) |
-| Picking the best way to pay and explaining why | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (JSON mode) |
-| Watchdog: ok / hold 24 h / freeze | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (JSON mode), with hard rules underneath that the AI can only make stricter |
-| Face match on the device | face-api (TinyFaceDetector + 128-number face descriptor) |
+| Picks the best way to pay (sell, borrow, cash) and explains why with real numbers | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (JSON mode) |
+| Watchdog: ok / hold 24 h / freeze, with hard rules underneath that the AI can only make stricter | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (JSON mode) |
+| Pay tab money tips (owned coins first, with the real sell and borrow trade-offs) | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
+| Voice commands and the spoken phrase | `@cf/openai/whisper-large-v3-turbo` |
+| Face match on the device | face-api.js (TensorFlow.js: TinyFaceDetector + 128-number face descriptor) |
 
-Live prices and 24-hour changes come from Coinbase's public price data.
+The app shows a quick local tip instantly and replaces it with the AI's answer when it arrives. Live prices come from Coinbase's public price data. The AI never promises gains and is not financial advice.
 
 ## Try it (2 minutes)
 
-1. Open the demo. No camera or mic? Tick **No camera or mic** in the demo panel.
-2. Set up: name, secret phrase, panic phrase, face, and say the phrase once.
-3. On the café register, press **Charge**. On your phone, double-click the side button, then **Tap phones**.
-4. Read the AI pick, tap **?**, and confirm with your face and phrase.
-5. Tick **Pretend it's 2 AM**, set the typed phrase to **slurred**, and send $40 to Ana. The watchdog freezes it. Open the **Human review desk** to unlock it after sending an ID + selfie.
-6. Say or type your panic phrase on a send. The phone says "Processing". The review desk shows the lock.
+1. Open the live demo on a phone or computer. Set up with any name and phrase; any face and voice pass.
+2. **Pay tab:** read the AI tip, tap **Pay with** to pick a coin and see the AI's pick, and spin the **How** wheel (Sell / Borrow / Cash).
+3. Double-tap anywhere. Look at the camera and say anything. Tap **Pay now**, then wait at "hold near reader". The Paid screen shows the watchdog's check and the PayPal sandbox payout ID.
+4. **Portfolio → Add funds → PayPal:** log in with any PayPal sandbox personal account to add test dollars.
+5. **Market:** buy or sell a coin; check the Portfolio color bar.
 
 ## Run it yourself
 
@@ -62,20 +68,25 @@ npx wrangler dev        # http://localhost:8787 (Workers AI runs on your Cloudfl
 npx wrangler deploy
 ```
 
-PayPal sandbox (optional: without it, payouts are simulated and labeled that way):
+PayPal sandbox (optional; without it, Add funds is pretend and payouts are labeled "simulated"):
 
-1. Create a free account at developer.paypal.com. Under Apps & Credentials (Sandbox), create an app.
-2. Put the Client ID in `wrangler.jsonc` → `vars.PAYPAL_CLIENT_ID`. Put a sandbox personal account email (it plays the café) in `vars.PAYPAL_MERCHANT_EMAIL`.
+1. At developer.paypal.com → Apps & Credentials (Sandbox), create an app (or use Default Application) with Payouts turned on.
+2. Put the Client ID in `wrangler.jsonc` → `vars.PAYPAL_CLIENT_ID`, and a sandbox personal account email (it plays the store) in `vars.PAYPAL_MERCHANT_EMAIL`.
 3. `npx wrangler secret put PAYPAL_SECRET` and paste the sandbox secret.
+
+iPhone app (optional): install [XcodeGen](https://github.com/yonaskolb/XcodeGen), then `cd ios && xcodegen`, open `CryptoPal.xcodeproj`, choose your Apple team, and run it on your iPhone. It loads the live site and adds iPhone Face ID and CryptoPal links that open in the app.
 
 ## Code
 
-- `src/worker.js`: API, rules, AI calls, PayPal calls. One Durable Object per demo session holds the accounts.
-- `public/app.js`: the two phones and the demo panel. `public/face.js`: the on-device face check. `public/review.html`: the human review desk.
+- `src/worker.js`: API, security rules, AI calls, PayPal calls. One Durable Object per demo wallet holds the accounts.
+- `public/app.js`: the app (Pay, Market, Portfolio, setup, pay flow, Add funds) and the desktop demo panel.
+- `public/face.js`: the on-device face check. `public/face-api/`: face-api.js and its models (MIT).
+- `public/review.html`: the human review desk. `public/sw.js`: offline cache for the app shell and face models.
+- `ios/`: the native iPhone app (SwiftUI + WKWebView, Face ID through LocalAuthentication).
 
 ## Prototype limits
 
-Balances are a simulated ledger at live prices. Real tap-to-pay (NFC) and the real side button need a native app, so the browser simulates both, and on iPhone a Shortcut can open CryptoPal from "Hey Siri" or the Action Button. The face check runs in the browser. A production version would verify it on a server or in secure hardware. Crypto lending would need licenses.
+Balances are a pretend ledger at live prices, and the Market's hourly moves are simulated (daily moves too when live data isn't available). Real tap-to-pay (NFC) is simulated. Crypto lending would need licenses. Sandbox only: no real money moves.
 
 ## License
 

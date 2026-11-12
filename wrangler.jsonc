@@ -11,6 +11,6 @@
   //   npx wrangler secret put PAYPAL_SECRET
   // PAYPAL_MERCHANT_EMAIL = a sandbox personal account email that plays the café getting paid.
   // APPLE_APP_ID lets the CryptoPal iPhone app open CryptoPal links (and QR codes) instead of Safari.
-  "vars": { "PAYPAL_CLIENT_ID": "", "PAYPAL_MERCHANT_EMAIL": "", "APPLE_APP_ID": "CTCR26TUFY.com.nayerly.cryptopal" },
+  "vars": { "PAYPAL_CLIENT_ID": "AUK18SVr59JIxSK54NgVR0Bu-tcm6jovgG9oWBP5u4ak0Y1sLVEkR_PFJdTuh02v3hRR9yM9RgrNJOCn", "PAYPAL_MERCHANT_EMAIL": "sb-gb3q053887818@personal.example.com", "APPLE_APP_ID": "CTCR26TUFY.com.nayerly.cryptopal" },
   "observability": { "enabled": true }
 }
